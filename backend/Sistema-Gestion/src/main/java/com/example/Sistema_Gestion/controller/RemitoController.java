@@ -1,18 +1,28 @@
 package com.example.Sistema_Gestion.controller;
 
+import com.example.Sistema_Gestion.dto.RemitoResumenDTO;
 import com.example.Sistema_Gestion.model.Remito;
 import com.example.Sistema_Gestion.service.RemitoService;
-import jakarta.servlet.http.HttpServletResponse;
+import lombok.extern.slf4j.Slf4j;
+import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.web.PageableDefault;
+import org.springframework.http.HttpHeaders;
 import org.springframework.http.HttpStatus;
+import org.springframework.http.MediaType;
 import org.springframework.http.ResponseEntity;
 import org.springframework.web.bind.annotation.*;
 import org.springframework.web.server.ResponseStatusException;
 
-import java.nio.file.Files;
-import java.nio.file.Paths;
+import java.io.ByteArrayOutputStream;
+import java.math.BigDecimal;
+import java.util.List;
+import java.util.Map;
+import java.util.stream.Collectors;
 
 @RestController
 @RequestMapping("/api/remitos")
+@Slf4j
 public class RemitoController {
 
     private final RemitoService remitoService;
@@ -22,62 +32,115 @@ public class RemitoController {
     }
 
     @GetMapping
-    public ResponseEntity<?> listarTodos() {
-        return ResponseEntity.ok(remitoService.listarTodos());
+    public Page<RemitoResumenDTO> listarTodos(@PageableDefault(size = 50, sort = "fecha") Pageable pageable) {
+        return remitoService.listarTodos(pageable)
+                .map(RemitoResumenDTO::new);
     }
 
-    @GetMapping("/{id}")
-    public ResponseEntity<?> obtener(@PathVariable Long id) {
-        return remitoService.buscarPorId(id)
-                .map(ResponseEntity::ok)
-                .orElse(ResponseEntity.notFound().build());
+    @GetMapping("/cliente/{clienteId}")
+    public List<RemitoResumenDTO> listarPorCliente(@PathVariable("clienteId") Long clienteId) {
+        return remitoService.listarPorCliente(clienteId).stream()
+                .map(RemitoResumenDTO::new)
+                .collect(Collectors.toList());
     }
 
-    // Agrega este método POST para crear nuevos remitos
-    @PostMapping
-    public ResponseEntity<?> crearRemito(@RequestBody Remito remito) {
+    @GetMapping("/cliente/{clienteId}/pendientes")
+    public List<RemitoResumenDTO> listarPendientesPorCliente(@PathVariable("clienteId") Long clienteId) {
+        return remitoService.listarPendientesPorCliente(clienteId).stream()
+                .map(RemitoResumenDTO::new)
+                .collect(Collectors.toList());
+    }
+
+    @GetMapping(params = "estado")
+    public List<RemitoResumenDTO> listarPorEstado(@RequestParam("estado") String estado) {
         try {
-            Remito creado = remitoService.generarRemito(remito);
-            return ResponseEntity.ok(creado);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Error al crear remito: " + e.getMessage());
+            Remito.EstadoRemito estadoEnum = Remito.EstadoRemito.valueOf(estado.toUpperCase());
+            return remitoService.listarPorEstado(estadoEnum).stream()
+                    .map(RemitoResumenDTO::new)
+                    .collect(Collectors.toList());
+        } catch (IllegalArgumentException e) {
+            throw new ResponseStatusException(HttpStatus.BAD_REQUEST, "Estado inválido: " + estado);
         }
+    }
+
+    @PostMapping
+    public Remito crearRemito(@RequestBody Remito remito) {
+        log.info("Generando nuevo remito para el cliente: {}", remito.getClienteNombre());
+        return remitoService.generarRemito(remito);
     }
 
     @PutMapping("/{id}")
-    public ResponseEntity<?> actualizarRemito(@PathVariable Long id, @RequestBody Remito remito) {
-        // Verificar que el remito existe
-        if (!remitoService.buscarPorId(id).isPresent()) {
-            return ResponseEntity.notFound().build();
-        }
-
-        // Asegurar que el ID del path coincide con el ID del objeto
+    public Remito actualizarRemito(@PathVariable("id") Long id, @RequestBody Remito remito) {
+        log.info("Actualizando remito ID: {}", id);
         remito.setId(id);
+        return remitoService.actualizarRemito(remito);
+    }
 
-        try {
-            Remito actualizado = remitoService.actualizarRemito(remito);
-            return ResponseEntity.ok(actualizado);
-        } catch (Exception e) {
-            return ResponseEntity.status(HttpStatus.INTERNAL_SERVER_ERROR)
-                    .body("Error al actualizar remito: " + e.getMessage());
-        }
+    @DeleteMapping("/{id}")
+    public ResponseEntity<Void> eliminarRemito(@PathVariable("id") Long id) {
+        log.info("Eliminando remito ID: {}", id);
+        remitoService.eliminarRemito(id);
+        return ResponseEntity.noContent().build();
     }
 
     @GetMapping("/{id}/pdf")
-    public void descargarPdf(@PathVariable Long id, HttpServletResponse response) {
-        Remito remito = remitoService.buscarPorId(id).orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND));
-        response.setContentType("application/pdf");
-        response.setHeader("Content-Disposition", "attachment; filename=remito_" + remito.getNumero() + ".pdf");
-        try {
-            // si querés cargar logo de resources
+    public ResponseEntity<byte[]> descargarPdf(@PathVariable("id") Long id) {
+        Remito remito = remitoService.buscarPorIdConItems(id)
+                .orElseThrow(() -> new ResponseStatusException(HttpStatus.NOT_FOUND, "Remito no encontrado"));
+
+        try (ByteArrayOutputStream baos = new ByteArrayOutputStream()) {
             byte[] logo = null;
             try {
-                logo = Files.readAllBytes(Paths.get("src/main/resources/static/logo.png"));
-            } catch (Exception ex) { logo = null; }
-            remitoService.generarPdfRemito(remito, response.getOutputStream(), logo);
+                logo = getClass().getResourceAsStream("/static/iSOTIPO.png").readAllBytes();
+            } catch (Exception ex) {
+                log.warn("No se pudo cargar el logo para el PDF del remito {}", id);
+            }
+
+            remitoService.generarPdfRemito(remito, baos, logo);
+            byte[] pdfBytes = baos.toByteArray();
+
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.APPLICATION_PDF);
+            headers.setContentDispositionFormData("attachment", "remito_" + remito.getNumero() + ".pdf");
+            headers.setContentLength(pdfBytes.length);
+
+            return new ResponseEntity<>(pdfBytes, headers, HttpStatus.OK);
         } catch (Exception e) {
-            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Error generando PDF", e);
+            log.error("Error al generar PDF para remito ID: {}", id, e);
+            throw new ResponseStatusException(HttpStatus.INTERNAL_SERVER_ERROR, "Error generando PDF");
+        }
+    }
+
+    @PostMapping("/{id}/valorizar")
+    public Remito valorizar(@PathVariable("id") Long id, @RequestBody ValorizarRequest req) {
+        log.info("Valorizando remito ID: {}", id);
+        return remitoService.valorizar(id, req.getPrecios(), req.getCotizacionDolar());
+    }
+
+    @PostMapping("/{id}/cobrar")
+    public Remito cobrar(@PathVariable("id") Long id) {
+        log.info("Marcando remito ID: {} como cobrado", id);
+        return remitoService.marcarComoCobrado(id);
+    }
+
+    public static class ValorizarRequest {
+        private BigDecimal cotizacionDolar;
+        private Map<Long, BigDecimal> precios;
+
+        public BigDecimal getCotizacionDolar() {
+            return cotizacionDolar;
+        }
+
+        public void setCotizacionDolar(BigDecimal cotizacionDolar) {
+            this.cotizacionDolar = cotizacionDolar;
+        }
+
+        public Map<Long, BigDecimal> getPrecios() {
+            return precios;
+        }
+
+        public void setPrecios(Map<Long, BigDecimal> precios) {
+            this.precios = precios;
         }
     }
 }

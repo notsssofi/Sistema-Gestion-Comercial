@@ -2,81 +2,74 @@ package com.example.Sistema_Gestion.model;
 
 import jakarta.persistence.*;
 import java.math.BigDecimal;
-import java.time.LocalDateTime;
+import java.time.LocalDate;
 
 @Entity
-@Table(name = "producto")
-
+@Table(name = "producto", indexes = {
+    @Index(name = "idx_producto_nombre", columnList = "nombre")
+})
 public class Producto {
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
-    @Column(unique=true)
+    @Column(unique = true, nullable = false)
     private String sku;
 
-    @Column(nullable=false)
+    @Column(nullable = false)
     private String nombre;
 
     @Column(columnDefinition = "TEXT")
     private String descripcion;
 
-    @Column(precision = 14, scale = 2)
-    private BigDecimal precioCosto = BigDecimal.ZERO;
+    @Column(name = "precio_costo", precision = 10, scale = 2)
+    private BigDecimal precioCosto;
 
-    @Column(precision = 14, scale = 2)
-    private BigDecimal precioVenta = BigDecimal.ZERO;
+    @Column(name = "precio_venta", precision = 10, scale = 2)
+    private BigDecimal precioVenta;
 
-    @Column(precision = 18, scale = 4)
-    private BigDecimal stock = BigDecimal.ZERO;
+    @Column(name = "precio_costo_usd", precision = 10, scale = 2)
+    private BigDecimal precioCostoUSD;
 
+    @Column(name = "precio_venta_usd", precision = 10, scale = 2)
+    private BigDecimal precioVentaUSD;
+
+    // ✅ CAMBIO CRÍTICO: De BigDecimal a Integer
+    @Column(nullable = false)
+    private Integer stock = 0;
+
+    @Column(name = "unidad_medida")
     private String unidadMedida;
+
+    @Column(nullable = false)
     private Boolean activo = true;
 
-    private LocalDateTime createdAt;
-    private LocalDateTime updatedAt;
+    @Column(name = "fecha_vencimiento")
+    private LocalDate fechaVencimiento;
 
-    private Boolean eliminado = false;
+    @Column(name = "porcentaje_iva", precision = 10, scale = 2)
+    private BigDecimal porcentajeIva = BigDecimal.ZERO;
 
-    // getters y setters
-    public Boolean getEliminado() { return eliminado; }
-    public void setEliminado(Boolean eliminado) { this.eliminado = eliminado; }
+    @Column(name = "porcentaje_utilidad", precision = 10, scale = 2)
+    private BigDecimal porcentajeUtilidad = BigDecimal.ZERO;
 
+    // =================== GETTERS Y SETTERS ===================
 
-    @PrePersist
-    public void prePersist() {
-        createdAt = LocalDateTime.now();
-        updatedAt = createdAt;
-    }
-    @PreUpdate
-    public void preUpdate() {
-        updatedAt = LocalDateTime.now();
+    public BigDecimal getPorcentajeIva() {
+        return porcentajeIva;
     }
 
-    //getters and setters
-
-
-    public Boolean getActivo() {
-        return activo;
+    public void setPorcentajeIva(BigDecimal porcentajeIva) {
+        this.porcentajeIva = porcentajeIva;
     }
 
-    public void setActivo(Boolean activo) {
-        this.activo = activo;
+    public BigDecimal getPorcentajeUtilidad() {
+        return porcentajeUtilidad;
     }
 
-    public LocalDateTime getCreatedAt() {
-        return createdAt;
-    }
-
-    public void setCreatedAt(LocalDateTime createdAt) {
-        this.createdAt = createdAt;
-    }
-
-    public String getDescripcion() {
-        return descripcion;
-    }
-
-    public void setDescripcion(String descripcion) {
-        this.descripcion = descripcion;
+    public void setPorcentajeUtilidad(BigDecimal porcentajeUtilidad) {
+        this.porcentajeUtilidad = porcentajeUtilidad;
     }
 
     public Long getId() {
@@ -87,12 +80,28 @@ public class Producto {
         this.id = id;
     }
 
+    public String getSku() {
+        return sku;
+    }
+
+    public void setSku(String sku) {
+        this.sku = sku;
+    }
+
     public String getNombre() {
         return nombre;
     }
 
     public void setNombre(String nombre) {
         this.nombre = nombre;
+    }
+
+    public String getDescripcion() {
+        return descripcion;
+    }
+
+    public void setDescripcion(String descripcion) {
+        this.descripcion = descripcion;
     }
 
     public BigDecimal getPrecioCosto() {
@@ -111,19 +120,27 @@ public class Producto {
         this.precioVenta = precioVenta;
     }
 
-    public String getSku() {
-        return sku;
+    public BigDecimal getPrecioCostoUSD() {
+        return precioCostoUSD;
     }
 
-    public void setSku(String sku) {
-        this.sku = sku;
+    public void setPrecioCostoUSD(BigDecimal precioCostoUSD) {
+        this.precioCostoUSD = precioCostoUSD;
     }
 
-    public BigDecimal getStock() {
+    public BigDecimal getPrecioVentaUSD() {
+        return precioVentaUSD;
+    }
+
+    public void setPrecioVentaUSD(BigDecimal precioVentaUSD) {
+        this.precioVentaUSD = precioVentaUSD;
+    }
+
+    public Integer getStock() {
         return stock;
     }
 
-    public void setStock(BigDecimal stock) {
+    public void setStock(Integer stock) {
         this.stock = stock;
     }
 
@@ -135,11 +152,19 @@ public class Producto {
         this.unidadMedida = unidadMedida;
     }
 
-    public LocalDateTime getUpdatedAt() {
-        return updatedAt;
+    public Boolean getActivo() {
+        return activo;
     }
 
-    public void setUpdatedAt(LocalDateTime updatedAt) {
-        this.updatedAt = updatedAt;
+    public void setActivo(Boolean activo) {
+        this.activo = activo;
+    }
+
+    public LocalDate getFechaVencimiento() {
+        return fechaVencimiento;
+    }
+
+    public void setFechaVencimiento(LocalDate fechaVencimiento) {
+        this.fechaVencimiento = fechaVencimiento;
     }
 }

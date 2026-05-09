@@ -1,38 +1,50 @@
 package com.example.Sistema_Gestion.model;
 
+import com.fasterxml.jackson.annotation.JsonBackReference;
 import jakarta.persistence.*;
 import java.math.BigDecimal;
 
 @Entity
-@Table(name="compra_item")
+@Table(name = "compra_item")
 public class CompraItem {
 
-    @Id @GeneratedValue(strategy = GenerationType.IDENTITY)
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
     private Long id;
 
     @ManyToOne
-    @JoinColumn(name="compra_id", nullable=false)
+    @JoinColumn(name = "compra_id", nullable = false)
+    @JsonBackReference
     private Compra compra;
 
     @ManyToOne
-    @JoinColumn(name="producto_id", nullable=false)
+    @JoinColumn(name = "producto_id", nullable = false)
     private Producto producto;
 
-    @Column(precision=18, scale=4, nullable=false)
-    private BigDecimal cantidad;
+    // ✅ CAMBIO CRÍTICO: De BigDecimal a Integer
+    @Column(nullable = false)
+    private Integer cantidad;
 
-    @Column(precision=14, scale=2, nullable=false)
+    @Column(precision = 14, scale = 2, nullable = false)
     private BigDecimal precioUnitario;
 
-    @Column(precision=14, scale=2, nullable=false)
+    @Column(precision = 6, scale = 2)
+    private BigDecimal descuento = BigDecimal.ZERO;
+
+    @Column(precision = 14, scale = 2, nullable = false)
     private BigDecimal subtotal;
 
-    public BigDecimal getCantidad() {
-        return cantidad;
+    @Column(precision = 14, scale = 2)
+    private BigDecimal precioUnitarioUSD = BigDecimal.ZERO;
+
+    // =================== GETTERS Y SETTERS ===================
+
+    public Long getId() {
+        return id;
     }
 
-    public void setCantidad(BigDecimal cantidad) {
-        this.cantidad = cantidad;
+    public void setId(Long id) {
+        this.id = id;
     }
 
     public Compra getCompra() {
@@ -43,12 +55,20 @@ public class CompraItem {
         this.compra = compra;
     }
 
-    public Long getId() {
-        return id;
+    public Producto getProducto() {
+        return producto;
     }
 
-    public void setId(Long id) {
-        this.id = id;
+    public void setProducto(Producto producto) {
+        this.producto = producto;
+    }
+
+    public Integer getCantidad() {
+        return cantidad;
+    }
+
+    public void setCantidad(Integer cantidad) {
+        this.cantidad = cantidad;
     }
 
     public BigDecimal getPrecioUnitario() {
@@ -59,19 +79,27 @@ public class CompraItem {
         this.precioUnitario = precioUnitario;
     }
 
-    public Producto getProducto() {
-        return producto;
-    }
-
-    public void setProducto(Producto producto) {
-        this.producto = producto;
-    }
-
     public BigDecimal getSubtotal() {
         return subtotal;
     }
 
     public void setSubtotal(BigDecimal subtotal) {
         this.subtotal = subtotal;
+    }
+
+    public BigDecimal getDescuento() {
+        return descuento;
+    }
+
+    public void setDescuento(BigDecimal descuento) {
+        this.descuento = descuento;
+    }
+
+    public BigDecimal getPrecioUnitarioUSD() {
+        return precioUnitarioUSD;
+    }
+
+    public void setPrecioUnitarioUSD(BigDecimal precioUnitarioUSD) {
+        this.precioUnitarioUSD = precioUnitarioUSD;
     }
 }

@@ -1,196 +1,384 @@
-import React, { useEffect, useState } from "react";
-import { FiPlus, FiEdit2, FiTrash2, FiUsers, FiSearch, FiFilter } from "react-icons/fi";
+import React, { useState, useEffect } from "react";
+import { useLocation, useNavigate } from "react-router-dom";
+import {
+  FiUsers, FiSearch, FiEdit2, FiPlus, FiPhone, FiMail,
+  FiMapPin, FiArrowLeft, FiShoppingCart, FiDollarSign, FiFileText
+} from "react-icons/fi";
 import ProveedoresFormModal from "../components/ProveedoresFormModal";
-import "../index.css";
+import CompraFormModal from "../components/CompraFormModal";
+import PagoProveedorFormModal from "../components/PagoProveedorFormModal";
+import NotaCreditoProveedorModal from "../components/NotaCreditoProveedorModal";
+import ProveedorCtaCteSection from "../components/ProveedorCtaCteSection";
+import ProveedorComprasSection from "../components/ProveedorComprasSection";
+import ReporteProveedorTab from "../components/ReporteProveedorTab";
+import Toast from "../components/Toast";
+import { apiFetch } from "../utils/api";
+
+const API = "/api/proveedores";
 
 export default function ProveedoresPage() {
   const [proveedores, setProveedores] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [modalOpen, setModalOpen] = useState(false);
-  const [editing, setEditing] = useState(null);
   const [searchTerm, setSearchTerm] = useState("");
-  const [showFilters, setShowFilters] = useState(false);
-
-  const API = "http://localhost:8080/api/proveedores";
+  const [modalOpen, setModalOpen] = useState(false);
+  const [compraModalOpen, setCompraModalOpen] = useState(false);
+  const [pagoModalOpen, setPagoModalOpen] = useState(false);
+  const [notaModalOpen, setNotaModalOpen] = useState(false);
+  const [selectedProv, setSelectedProv] = useState(null);
+  const [viewDetail, setViewDetail] = useState(false);
+  const [activeTab, setActiveTab] = useState("compras");
+  const [toast, setToast] = useState(null);
+  const [refreshKey, setRefreshKey] = useState(0);
+  const [pagoParaEditar, setPagoParaEditar] = useState(null);
+  const [returnPath, setReturnPath] = useState(null);
+  const location = useLocation();
+  const navigate = useNavigate();
 
   const fetchAll = async () => {
     setLoading(true);
     try {
-      const res = await fetch(API);
-      const data = await res.json();
-      setProveedores(data);
+      const res = await apiFetch(`${API}/con-saldo`);
+      setProveedores(await res.json() || []);
+    } catch (e) { setProveedores([]); }
+    finally { setLoading(false); }
+  };
+
+  const handleSaveProveedor = async (payload) => {
+    try {
+      const isEdit = !!payload.id;
+      const url = isEdit ? `${API}/${payload.id}` : API;
+      const method = isEdit ? "PUT" : "POST";
+
+      const res = await apiFetch(url, {
+        method,
+        body: JSON.stringify(payload)
+      });
+
+      if (res.ok) {
+        setToast({
+          title: isEdit ? "Proveedor actualizado" : "Proveedor creado",
+          message: `La información de ${payload.nombre} se guardó correctamente.`,
+          type: "success"
+        });
+        setModalOpen(false);
+        fetchAll();
+      } else {
+        const errorData = await res.json();
+        setToast({
+          title: "Error al guardar",
+          message: errorData.message || "Ocurrió un problema en el servidor.",
+          type: "error"
+        });
+      }
     } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
+      setToast({
+        title: "Error de conexión",
+        message: "No se pudo comunicar con el servidor.",
+        type: "error"
+      });
     }
   };
 
   useEffect(() => { fetchAll(); }, []);
 
-  const handleDelete = async (id) => {
-    if (!window.confirm("¿Eliminar proveedor?")) return;
-    await fetch(`${API}/${id}`, { method: "DELETE" });
-    fetchAll();
-  };
+  // Lógica de Deep Linking desde Tesorería u otras áreas
+  useEffect(() => {
+    if (proveedores.length > 0 && location.state && location.state.autoOpenProveedorId) {
+      const p = proveedores.find(prov => prov.id === location.state.autoOpenProveedorId);
+      if (p) {
+        setSelectedProv(p);
+        setViewDetail(true);
+        if (location.state.autoOpenTab) {
+          setActiveTab(location.state.autoOpenTab);
+        }
+        
+        // Capturamos el path de retorno
+        if (location.state.returnTo) {
+          setReturnPath({
+            path: location.state.returnTo,
+            label: location.state.returnLabel || 'Atrás'
+          });
+        }
 
-  const handleSave = async (prov) => {
-    const method = prov.id ? "PUT" : "POST";
-    const url = prov.id ? `${API}/${prov.id}` : API;
-    await fetch(url, {
-      method,
-      headers: {"Content-Type":"application/json"},
-      body: JSON.stringify(prov),
-    });
-    setModalOpen(false);
-    setEditing(null);
-    fetchAll();
-  };
+        // Limpiamos el state para que no se auto-abra repetidamente si el usuario navega
+        navigate('.', { replace: true, state: {} });
+      }
+    }
+  }, [proveedores, location.state, navigate]);
 
-  // Filtrar proveedores
-  const filteredProveedores = proveedores.filter(proveedor => {
-    return proveedor.nombre?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-           proveedor.cuit?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-           proveedor.email?.toLowerCase().includes(searchTerm.toLowerCase());
-  });
+  const filtered = proveedores.filter(p =>
+    p.nombre?.toLowerCase().includes(searchTerm.toLowerCase()) || p.cuit?.includes(searchTerm)
+  );
 
   return (
     <div className="mercaderia-container">
-      {/* Header de la página - Mismo estilo que Mercadería */}
-      <div className="page-header">
-        <div className="header-content">
-          <div className="header-title">
-            <div className="title-icon">
-              <FiUsers />
+      {viewDetail && selectedProv ? (
+        <>
+          <div className="page-header" style={{ marginBottom: "1.5rem" }}>
+            <div className="header-content">
+              <div className="header-title">
+                <button className="icon-btn" onClick={() => { setViewDetail(false); setSelectedProv(null); }} style={{ marginRight: "1rem" }}>
+                  <FiArrowLeft />
+                </button>
+                <div className="title-icon"><FiUsers /></div>
+                 <div>
+                   <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "4px" }}>
+                     <h1>{selectedProv.nombre}</h1>
+                     {returnPath && (
+                       <button 
+                         onClick={() => navigate(returnPath.path)}
+                         className="btn-modern"
+                         style={{ 
+                           padding: "6px 14px", 
+                           fontSize: "0.8rem", 
+                           background: "#eff6ff", 
+                           color: "#2563eb",
+                           border: "1px solid #bfdbfe",
+                           fontWeight: "700",
+                           borderRadius: "10px",
+                           display: "flex",
+                           alignItems: "center",
+                           gap: "6px",
+                           boxShadow: "0 2px 4px rgba(37, 99, 235, 0.1)",
+                           cursor: "pointer",
+                           transition: "all 0.2s"
+                         }}
+                         onMouseOver={(e) => { e.currentTarget.style.background = "#dbeafe"; e.currentTarget.style.transform = "translateY(-1px)"; }}
+                         onMouseOut={(e) => { e.currentTarget.style.background = "#eff6ff"; e.currentTarget.style.transform = "translateY(0)"; }}
+                       >
+                         <FiArrowLeft /> Volver a {returnPath.label}
+                       </button>
+                     )}
+                   </div>
+                   <p>{selectedProv.cuit || "Sin CUIT"}</p>
+                 </div>
+              </div>
+              <div style={{ display: "flex", gap: "10px" }}>
+                <button className="btn-modern success" onClick={() => setCompraModalOpen(true)}>
+                  <FiPlus /> Registrar Compra
+                </button>
+                <button className="btn-modern danger" style={{ background: "#e11d48", color: "white" }} onClick={() => setPagoModalOpen(true)}>
+                  <FiDollarSign /> Registrar Pago
+                </button>
+                <button className="btn-modern warning" style={{ background: "#f59e0b", color: "white" }} onClick={() => setNotaModalOpen(true)}>
+                  <FiFileText /> Nota de Crédito
+                </button>
+                <button className="icon-btn edit" onClick={() => setModalOpen(true)} title="Editar Proveedor">
+                  <FiEdit2 />
+                </button>
+              </div>
             </div>
-            <div>
-              <h1>Gestión de Proveedores</h1>
-              <p>Administrá remitos, facturas y datos de tus proveedores</p>
+          </div>
+
+          <div className="tabs-container" style={{
+            display: "flex",
+            gap: "8px",
+            marginBottom: "24px",
+            paddingBottom: "12px",
+            borderBottom: "1px solid #e2e8f0"
+          }}>
+            <button className={`tab-btn-modern ${activeTab === "compras" ? "active" : ""}`} onClick={() => setActiveTab("compras")}><FiShoppingCart /> Historial Compras</button>
+            <button className={`tab-btn-modern ${activeTab === "ctacte" ? "active" : ""}`} onClick={() => setActiveTab("ctacte")}><FiDollarSign /> Historial de Pago</button>
+            <button className={`tab-btn-modern ${activeTab === "reporte" ? "active" : ""}`} onClick={() => setActiveTab("reporte")}><FiFileText /> Reporte</button>
+          </div>
+
+          <div className="tab-content">
+            {activeTab === "ctacte" && (
+              <ProveedorCtaCteSection 
+                proveedorId={selectedProv.id} 
+                refreshKey={refreshKey} 
+                onEditPago={(p) => { setPagoParaEditar(p); setPagoModalOpen(true); }}
+              />
+            )}
+            {activeTab === "compras" && <ProveedorComprasSection proveedorId={selectedProv.id} refreshKey={refreshKey} />}
+            {activeTab === "reporte" && <ReporteProveedorTab proveedorId={selectedProv.id} refreshKey={refreshKey} />}
+          </div>
+        </>
+      ) : (
+        <>
+          <div className="page-header">
+            <div className="header-content">
+              <div className="header-title">
+                <div className="title-icon"><FiUsers /></div>
+                <div>
+                  <h1>Gestión de Proveedores</h1>
+                  <p>Administrá información comercial y cuentas a pagar</p>
+                </div>
+              </div>
+              <button onClick={() => { setSelectedProv(null); setViewDetail(false); setModalOpen(true); }} className="btn-primary"><FiPlus /> Nuevo Proveedor</button>
             </div>
           </div>
-          <button
-            onClick={() => { setEditing(null); setModalOpen(true); }}
-            className="btn-primary"
-          >
-            <FiPlus />
-            Nuevo Proveedor
-          </button>
-        </div>
-      </div>
 
-      {/* Barra de búsqueda */}
-      <div className="filters-bar">
-        <div className="search-container">
-          <div className="search-box">
-            <FiSearch className="search-icon" />
-            <input
-              type="text"
-              placeholder="Buscar proveedores por nombre, CUIT o email..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="search-input"
-            />
+          <div className="filters-bar">
+            <div className="search-box">
+              <FiSearch className="search-icon" />
+              <input
+                type="text"
+                placeholder="Buscar proveedor..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="search-input"
+              />
+            </div>
           </div>
-        </div>
-      </div>
 
-      {/* Tabla de proveedores */}
-      <div className="table-container">
-        {loading ? (
-          <div className="loading-state">
-            <div className="loading-spinner"></div>
-            <p>Cargando proveedores...</p>
-          </div>
-        ) : filteredProveedores.length === 0 ? (
-          <div className="empty-state">
-            <FiUsers />
-            <h3>No se encontraron proveedores</h3>
-            <p>{searchTerm ? 'Intenta ajustar los términos de búsqueda' : 'Comienza agregando tu primer proveedor'}</p>
-            {!searchTerm && (
-              <button
-                onClick={() => { setEditing(null); setModalOpen(true); }}
-                className="btn-primary"
-              >
-                <FiPlus />
-                Agregar Primer Proveedor
-              </button>
+          <div className="table-container">
+            {loading ? <div className="loading-spinner" /> : (
+              <div className="table-wrapper">
+                <table className="modern-table">
+                  <thead>
+                    <tr>
+                      <th>Proveedor / CUIT</th>
+                      <th>Contacto</th>
+                      <th>Ubicación</th>
+                      <th style={{ textAlign: "center" }}>Acciones</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {filtered.map(p => {
+                      const tieneDeudaARS = p.deudaARS != null && Number(p.deudaARS) > 0.01;
+                      const tieneDeudaUSD = p.deudaUSD != null && Number(p.deudaUSD) > 0.01;
+                      const tieneDeuda = tieneDeudaARS || tieneDeudaUSD;
+                      return (
+                      <tr key={p.id} style={tieneDeuda ? { borderLeft: "3px solid #e11d48", background: "#fff5f5" } : { borderLeft: "3px solid transparent" }}>
+                        <td>
+                          <div className="product-info">
+                            <h4>{p.nombre}</h4>
+                            <div style={{ display: "flex", gap: "6px", flexWrap: "wrap", marginTop: "4px", alignItems: "center" }}>
+                              <span className="sku-badge" style={{ fontSize: "0.75rem" }}>{p.cuit || "S/C"}</span>
+                              {tieneDeudaARS && (
+                                <span style={{ fontSize: "0.7rem", fontWeight: 700, background: "#fee2e2", color: "#b91c1c", padding: "2px 7px", borderRadius: "10px", whiteSpace: "nowrap" }}>
+                                  ARS ${Number(p.deudaARS).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
+                              )}
+                              {tieneDeudaUSD && (
+                                <span style={{ fontSize: "0.7rem", fontWeight: 700, background: "#fef3c7", color: "#92400e", padding: "2px 7px", borderRadius: "10px", whiteSpace: "nowrap" }}>
+                                  USD ${Number(p.deudaUSD).toLocaleString('es-AR', { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                                </span>
+                              )}
+                            </div>
+                          </div>
+                        </td>
+                        <td>
+                          <div style={{ fontSize: "0.9rem" }}>
+                            <p style={{ margin: 0 }}><FiPhone size={14} color="var(--muted)" /> {p.telefono || "-"}</p>
+                            <p style={{ margin: "4px 0 0 0" }}><FiMail size={14} color="var(--muted)" /> {p.email || "-"}</p>
+                          </div>
+                        </td>
+                        <td>
+                          <p style={{ margin: 0, fontSize: "0.9rem" }}><FiMapPin size={14} color="var(--muted)" /> {p.direccion || "-"}</p>
+                        </td>
+                        <td className="actions-cell">
+                          <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+                            <button className="icon-btn edit" onClick={() => { setSelectedProv(p); setViewDetail(false); setModalOpen(true); }} title="Editar"><FiEdit2 /></button>
+                            <button
+                              className="btn-primary"
+                              style={{ padding: "6px 12px", fontSize: "0.85rem", gap: "6px" }}
+                              onClick={() => { setSelectedProv(p); setViewDetail(true); setActiveTab("compras"); }}
+                              title="Ver Historial de Compras"
+                            >
+                              <FiShoppingCart /> Historial de Compras
+                            </button>
+                            <button
+                              className="btn-secondary"
+                              style={{ padding: "6px 12px", fontSize: "0.85rem", gap: "6px", background: "#e3f2fd", color: "#1976d2", border: "1px solid #bbdefb" }}
+                              onClick={() => { setSelectedProv(p); setViewDetail(false); setCompraModalOpen(true); }}
+                              title="Registrar Nueva Compra"
+                            >
+                              <FiPlus /> Nueva Compra
+                            </button>
+                            <button
+                              className="btn-secondary"
+                              style={{ padding: "6px 12px", fontSize: "0.85rem", gap: "6px", background: "#fef2f2", color: "#e11d48", border: "1px solid #fecaca" }}
+                              onClick={() => { setSelectedProv(p); setViewDetail(false); setPagoModalOpen(true); }}
+                              title="Registrar Pago"
+                            >
+                              <FiDollarSign /> Pago
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    )})}
+                  </tbody>
+                </table>
+              </div>
             )}
           </div>
-        ) : (
-          <div className="table-wrapper">
-            <table className="modern-table">
-              <thead>
-                <tr>
-                  <th>Nombre</th>
-                  <th>CUIT</th>
-                  <th>Teléfono</th>
-                  <th>Email</th>
-                  <th>Dirección</th>
-                  <th>Condición IVA</th>
-                  <th>Acciones</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredProveedores.map(proveedor => (
-                  <tr key={proveedor.id}>
-                    <td className="product-cell">
-                      <div className="product-info">
-                        <h4>{proveedor.nombre}</h4>
-                        {proveedor.notas && (
-                          <p>{proveedor.notas}</p>
-                        )}
-                      </div>
-                    </td>
-                    <td className="sku-cell">
-                      <span className="sku-badge">{proveedor.cuit || '-'}</span>
-                    </td>
-                    <td className="unit-cell">
-                      {proveedor.telefono || '-'}
-                    </td>
-                    <td className="unit-cell">
-                      {proveedor.email || '-'}
-                    </td>
-                    <td className="unit-cell">
-                      {proveedor.direccion || '-'}
-                    </td>
-                    <td className="status-cell">
-                      <span className="status-badge active">
-                        {proveedor.condicionIva || 'No especificado'}
-                      </span>
-                    </td>
-                    <td className="actions-cell">
-                      <div className="action-buttons">
-                        <button
-                          onClick={() => { setEditing(proveedor); setModalOpen(true); }}
-                          className="icon-btn edit"
-                          title="Editar"
-                        >
-                          <FiEdit2 />
-                        </button>
-                        <button
-                          onClick={() => handleDelete(proveedor.id)}
-                          className="icon-btn delete"
-                          title="Eliminar"
-                        >
-                          <FiTrash2 />
-                        </button>
-                      </div>
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
-      </div>
+        </>
+      )}
 
       {modalOpen && (
         <ProveedoresFormModal
-          proveedor={editing}
-          onClose={() => { setModalOpen(false); setEditing(null); }}
-          onSave={handleSave}
+          proveedor={selectedProv}
+          onClose={() => { setModalOpen(false); }}
+          onSave={handleSaveProveedor}
         />
       )}
+
+      {compraModalOpen && (
+        <CompraFormModal
+          proveedor={selectedProv}
+          onClose={() => setCompraModalOpen(false)}
+          onSaved={() => {
+            setCompraModalOpen(false);
+            fetchAll();
+            setRefreshKey(prev => prev + 1); // ✅ Fuerza refresco de historial/reporte
+            setToast({
+              title: "Compra registrada",
+              message: "El ingreso de mercadería se procesó correctamente.",
+              type: "success"
+            });
+          }}
+        />
+      )}
+
+      {pagoModalOpen && (
+        <PagoProveedorFormModal
+          proveedorIdPreselected={selectedProv?.id}
+          pagoEditar={pagoParaEditar}
+          onClose={() => { setPagoModalOpen(false); setPagoParaEditar(null); }}
+          onSaved={() => {
+            setPagoModalOpen(false);
+            setPagoParaEditar(null);
+            fetchAll();
+            setRefreshKey(prev => prev + 1);
+            setToast({
+              title: pagoParaEditar ? "Pago actualizado" : "Pago registrado",
+              message: pagoParaEditar ? "Los cambios se guardaron correctamente." : "El pago al proveedor se ha guardado correctamente.",
+              type: "success"
+            });
+          }}
+        />
+      )}
+
+      {notaModalOpen && (
+        <NotaCreditoProveedorModal
+          proveedor={selectedProv}
+          onClose={() => setNotaModalOpen(false)}
+          onSaved={() => {
+            setNotaModalOpen(false);
+            fetchAll();
+            setRefreshKey(prev => prev + 1);
+            setToast({
+              title: "Nota de Crédito registrada",
+              message: "El ajuste financiero se procesó correctamente y se descontó de la deuda.",
+              type: "success"
+            });
+          }}
+        />
+      )}
+
+      {toast && (
+        <div className="toast-container">
+          <Toast
+            title={toast.title}
+            message={toast.message}
+            type={toast.type}
+            onClose={() => setToast(null)}
+          />
+        </div>
+      )}
+
     </div>
   );
 }
